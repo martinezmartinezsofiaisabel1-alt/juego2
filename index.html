@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Aventura en el Bosque Oscuro</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #000;
+    color: #fff;
+    text-align: center;
+    overflow: hidden;
+  }
+  #intro {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+  }
+  #intro h1 { font-size: 3em; color: #0f0; }
+  #intro p { max-width: 700px; font-size: 1.3em; line-height: 1.6; }
+  button {
+    margin: 20px;
+    padding: 15px 30px;
+    font-size: 1.2em;
+    cursor: pointer;
+    background: #0f0;
+    color: #000;
+    border: none;
+    border-radius: 10px;
+  }
+  button:hover { background: #0c0; }
+  #gameContainer {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+  canvas {
+    background: linear-gradient(to bottom, #003300, #000);
+  }
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.6);
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 1.2em;
+  }
+  #controls {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+</style>
+</head>
+<body>
+
+<div id="intro">
+  <h1>El Bosque Maldito</h1>
+  <p>
+    Eres Alex, un joven valiente que ha entrado al Bosque Oscuro para rescatar a tu aldea 
+    de una antigua maldición. Una horda de monstruos ha despertado y solo tú, armado con 
+    tu fiel espada, puedes detenerlos.<br><br>
+    Sobrevive 10 oleadas cada vez más difíciles. ¡Cada monstruo eliminado te acerca a la victoria!
+  </p>
+  <button onclick="iniciarJuego()">INICIAR AVENTURA</button>
+</div>
+
+<div id="gameContainer" style="display:none;">
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="ui">
+    Nivel: <span id="nivel">1</span> &nbsp;&nbsp;&nbsp;
+    Vida: <span id="vida">100</span>% &nbsp;&nbsp;&nbsp;
+    Puntuación: <span id="puntos">0</span>
+  </div>
+
+  <div id="controls">
+    <button onclick="pausarJuego()">PAUSAR</button>
+    <button onclick="finalizarJuego()">FINALIZAR JUEGO</button>
+  </div>
+</div>
+
+<script>
+// ================ VARIABLES DEL JUEGO ================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let jugador = {
+  x: canvas.width/2 - 30,
+  y: canvas.height - 150,
+  width: 60,
+  height: 80,
+  vida: 100,
+  velocidad: 7,
+  atacando: false,
+  direccion: 1 // 1 derecha, -1 izquierda
+};
+
+let monstruos = [];
+let particulas = [];
+let nivel = 1;
+let puntos = 0;
+let juegoPausado = false;
+let juegoTerminado = false;
+let teclas = {};
+
+// ================ INICIO Y CONTROLES ================
+function iniciarJuego() {
+  document.getElementById('intro').style.display = 'none';
+  document.getElementById('gameContainer').style.display = 'block';
+  crearMonstruos(nivel);
+  loop();
+}
+
+function pausarJuego() {
+  juegoPausado = !juegoPausado;
+  if (!juegoPausado) loop();
+}
+
+function finalizarJuego() {
+  location.reload();
+}
+
+// Controles
+window.addEventListener('keydown', e => {
+  teclas[e.key] = true;
+  if (e.key === ' ' || e.key === 'ArrowUp') jugador.atacando = true;
+});
+window.addEventListener('keyup', e => {
+  teclas[e.key] = false;
+});
+
+// ================ CREAR MONSTRUOS ================
+function crearMonstruos(nivelActual) {
+  const cantidad = 3 + nivelActual * 2; // más monstruos cada nivel
+  const vidaBase = 30 + nivelActual * 15;
+  const velocidadBase = 0.5 + nivelActual * 0.2;
+
+  for (let i = 0; i < cantidad; i++) {
+    monstruos.push({
+      x: Math.random() < 0.5 ? -100 : canvas.width + 100,
+      y: canvas.height - 180 - Math.random() * 200,
+      width: 70,
+      height: 80,
+      vida: vidaBase,
+      vidaMax: vidaBase,
+      velocidad: velocidadBase + Math.random() * 0.5,
+      color: `hsl(${Math.random()*60}, 80%, 40%)`
+    });
+  }
+}
+
+// ================ PARTÍCULAS (sangre) ================
+function crearParticula(x, y) {
+  for (let i = 0; i < 15; i++) {
+    particulas.push({
+      x, y,
+      vx: Math.random()*10 - 5,
+      vy: Math.random()*10 - 5,
+      vida: 30,
+      color: '#f00'
+    });
+  }
+}
+
+// ================ BUCLE PRINCIPAL ================
+function loop() {
+  if (juegoPausado || juegoTerminado) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Fondo bosque (simple)
+  for (let i = 0; i < 20; i++) {
+    ctx.fillStyle = '#003300';
+    ctx.fillRect(i*200 - Date.now()/20 % 200, 0, 150, canvas.height);
+  }
+
+  // Movimiento jugador
+  if (teclas['ArrowLeft'] || teclas['a']) {
+    jugador.x -= jugador.velocidad;
+    jugador.direccion = -1;
+  }
+  if (teclas['ArrowRight'] || teclas['d']) {
+    jugador.x += jugador.velocidad;
+    jugador.direccion = 1;
+  }
+  jugador.x = Math.max(0, Math.min(canvas.width - jugador.width, jugador.x));
+
+  // Dibujar jugador (chico con espada)
+  ctx.save();
+  ctx.translate(jugador.x + jugador.width/2, jugador.y + jugador.height/2);
+  ctx.scale(jugador.direccion, 1);
+  
+  // cuerpo
+  ctx.fillStyle = '#88f';
+  ctx.fillRect(-20, -40, 40, 70);
+  // cabeza
+  ctx.fillStyle = '#fdb';
+  ctx.beginPath(); ctx.arc(0, -45, 18, 0, Math.PI*2); ctx.fill();
+  // espada
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(25, -20);
+  if (jugador.atacando) ctx.lineTo(60, -30);
+  else ctx.lineTo(45, -25);
+  ctx.stroke();
+  ctx.restore();
+
+  jugador.atacando = false;
+
+  // Monstruos
+  monstruos.forEach((m, i) => {
+    // IA simple: acercarse al jugador
+    if (m.x < jugador.x + 30) m.x += m.velocidad;
+    if (m.x > jugador.x + 30) m.x -= m.velocidad;
+
+    // Dibujar monstruo
+    ctx.fillStyle = m.color;
+    ctx.fillRect(m.x, m.y, m.width, m.height);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(m.x + 15, m.y + 15, 15, 20);
+    ctx.fillRect(m.x + 40, m.y + 15, 15, 20);
+    // ojos rojos
+    ctx.fillStyle = '#f00';
+    ctx.fillRect(m.x + 20, m.y + 20, 8, 8);
+    ctx.fillRect(m.x + 42, m.y + 20, 8, 8);
+
+    // Barra de vida
+    ctx.fillStyle = '#000';
+    ctx.fillRect(m.x, m.y - 15, m.width, 8);
+    ctx.fillStyle = '#0f0';
+    ctx.fillRect(m.x, m.y - 15, m.width * (m.vida / m.vidaMax), 8);
+
+    // Colisión espada
+    if (jugador.atacando && Math.abs(m.x - jugador.x) < 80 && Math.abs(m.y - jugador.y) < 80) {
+      m.vida -= 35;
+      crearParticula(m.x + m.width/2, m.y + m.height/2);
+      if (m.vida <= 0) {
+        monstruos.splice(i, 1);
+        puntos += 100 * nivel;
+      }
+    }
+
+    // Daño al jugador
+    if (Math.abs(m.x - jugador.x) < 60 && Math.random() < 0.01) {
+      jugador.vida -= 10;
+      actualizarUI();
+      if (jugador.vida <= 0) {
+        juegoTerminado = true;
+        alert(`¡Has sido derrotado! Nivel alcanzado: ${nivel}\nPuntuación final: ${puntos}`);
+        finalizarJuego();
+      }
+    }
+  });
+
+  // Partículas
+  particulas.forEach((p, i) => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vida--;
+    ctx.globalAlpha = p.vida / 30;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 6, 6);
+    if (p.vida <= 0) particulas.splice(i, 1);
+  });
+  ctx.globalAlpha = 1;
+
+  // Siguiente nivel
+  if (monstruos.length === 0) {
+    nivel++;
+    actualizarUI();
+    if (nivel > 10) {
+      alert(`¡HAS GANADO! Completaste los 10 niveles con ${puntos} puntos. ¡Eres un héroe!`);
+      finalizarJuego();
+    } else {
+      crearMonstruos(nivel);
+    }
+  }
+
+  actualizarUI();
+  requestAnimationFrame(loop);
+}
+
+function actualizarUI() {
+  document.getElementById('nivel').textContent = nivel;
+  document.getElementById('vida').textContent = jugador.vida;
+  document.getElementById('puntos').textContent = puntos;
+}
+
+// Ajustar canvas al redimensionar ventana
+window.addEventListener('resize', () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+</script>
+</body>
+</html>
